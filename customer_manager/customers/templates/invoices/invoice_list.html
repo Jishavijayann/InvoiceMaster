@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invoice Management</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+        }
+        th {
+            background-color: #f4f4f4;
+        }
+        form {
+            margin-bottom: 20px;
+        }
+        label, select, input {
+            margin: 5px 0;
+            display: block;
+        }
+        button {
+            margin: 10px 0;
+            padding: 10px 15px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .subtotal-tax {
+            font-size: 0.9em;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <h1>Invoice Management</h1>
+
+    <!-- Search Bar -->
+    <form method="get" action="">
+        <label for="search">Search Invoices:</label>
+        <input type="text" id="search" name="query" placeholder="Search by Invoice Number or Customer Name" value="{{ query }}">
+        <button type="submit">Search</button>
+    </form>
+
+    <!-- Filter By Date -->
+    <form method="get" action="">
+        <label for="date-range">Filter by Date Range:</label>
+        <input type="date" id="start-date" name="start_date">
+        <input type="date" id="end-date" name="end_date">
+        <button type="submit">Filter</button>
+    </form>
+
+    <!-- List Existing Invoices -->
+    <h2>Invoice List</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Invoice Number</th>
+                <th>Customer</th>
+                <th>Items</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if invoices %}
+                {% for invoice in invoices %}
+                    <tr>
+                        <td>{{ invoice.invoice_number }}</td>
+                        <td>{{ invoice.customer }}</td>
+                        <td>
+                            <ul>
+                                {% for item in invoice.items %}
+                                    <li>{{ item.product_name }} - Quantity: {{ item.quantity }}, Rate: {{ item.rate }}, Tax: {{ item.tax }}, Subtotal: {{ item.subtotal }}</li>
+                                {% endfor %}
+                            </ul>
+                        </td>
+                    </tr>
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td colspan="3">No invoices found.</td>
+                </tr>
+            {% endif %}
+        </tbody>
+    </table>
+
+    <!-- Create New Invoice -->
+    <h2>Create Invoice</h2>
+    <form id="create-invoice-form">
+        <label for="customer">Customer:</label>
+        <select id="customer" name="customer_id" required>
+            <option value="" disabled selected>Select Customer</option>
+            {% for customer in customers %}
+                <option value="{{ customer.id }}">{{ customer.name }}</option>
+            {% endfor %}
+        </select>
+
+        <label for="products">Products:</label>
+        <div id="products">
+            <select class="product" name="product_id" required>
+                <option value="" disabled selected>Select Product</option>
+                {% for product in products %}
+                    <option value="{{ product.id }}" data-rate="{{ product.rate }}" data-tax="{{ product.tax }}">
+                        {{ product.product_name }} (Rate: {{ product.rate }}, Tax: {{ product.tax }})
+                    </option>
+                {% endfor %}
+            </select>
+            <input type="number" class="quantity" name="quantity" placeholder="Quantity" min="1" required>
+            <div class="subtotal-tax">Subtotal: <span class="subtotal">0.00</span>, Tax: <span class="tax">0.00</span></div>
+        </div>
+
+        <button type="button" id="add-product">Add Another Product</button>
+        <button type="submit">Create Invoice</button>
+    </form>
+
+    <button id="save-invoices">Save All</button>
+
+    <script>
+        // Add another product row
+        document.getElementById('add-product').addEventListener('click', function () {
+            const productDiv = document.getElementById('products');
+            const newProduct = productDiv.children[0].cloneNode(true);
+            const newQuantity = productDiv.children[1].cloneNode(true);
+            const newSubtotalTax = productDiv.children[2].cloneNode(true);
+
+            productDiv.appendChild(newProduct);
+            productDiv.appendChild(newQuantity);
+            productDiv.appendChild(newSubtotalTax);
+
+            addAutoCalculation(productDiv.lastElementChild.previousElementSibling.previousElementSibling);
+        });
+
+        // Auto-calculate subtotal and tax
+        function addAutoCalculation(selectElement) {
+            const quantityInput = selectElement.nextElementSibling;
+            const subtotalTaxDiv = quantityInput.nextElementSibling;
+
+            quantityInput.addEventListener('input', function () {
+                const rate = parseFloat(selectElement.options[selectElement.selectedIndex].dataset.rate || 0);
+                const tax = parseFloat(selectElement.options[selectElement.selectedIndex].dataset.tax || 0);
+                const quantity = parseFloat(quantityInput.value || 0);
+
+                const subtotal = rate * quantity;
+                subtotalTaxDiv.querySelector('.subtotal').textContent = subtotal.toFixed(2);
+                subtotalTaxDiv.querySelector('.tax').textContent = tax.toFixed(2);
+            });
+
+            selectElement.addEventListener('change', function () {
+                const rate = parseFloat(selectElement.options[selectElement.selectedIndex].dataset.rate || 0);
+                const tax = parseFloat(selectElement.options[selectElement.selectedIndex].dataset.tax || 0);
+                const quantity = parseFloat(quantityInput.value || 0);
+
+                const subtotal = rate * quantity;
+                subtotalTaxDiv.querySelector('.subtotal').textContent = subtotal.toFixed(2);
+                subtotalTaxDiv.querySelector('.tax').textContent = tax.toFixed(2);
+            });
+        }
+
+        // Attach auto-calculation to the first product row
+        addAutoCalculation(document.querySelector('.product'));
+
+        // Handle form submission for creating a new invoice
+        document.getElementById('create-invoice-form').addEventListener('submit', function (e) {
+            e.preventDefault();
+            const formData = {
+                customer_id: document.getElementById('customer').value,
+                items: Array.from(document.querySelectorAll('#products select')).map((select, i) => ({
+                    product_id: select.value,
+                    quantity: document.querySelectorAll('#products input.quantity')[i].value
+                }))
+            };
+            fetch('', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formData)
+            }).then(response => response.json()).then(data => {
+                if (data.status === 'created') {
+                    alert('Invoice created successfully!');
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            });
+        });
+
+        // Save all invoices (example functionality for bulk save)
+        document.getElementById('save-invoices').addEventListener('click', function () {
+            fetch('', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'save_all' }) // Customize as per backend handling
+            }).then(response => response.json()).then(data => {
+                if (data.status === 'success') {
+                    alert('All invoices saved successfully!');
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            });
+        });
+    </script>
+</body>
+</html>
